@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCL studio - Suivi Clients & CA</title>
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-bg: #f0f4f8;
+      --color-primary: #4e89ae;
+      --color-secondary: #f2a365;
+      --color-accent: #618685;
+      --color-light: #ffffff;
+      --color-dark: #333333;
+      --radius: 8px;
+      --shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Roboto', sans-serif; background: var(--color-bg); margin: 0; padding: 20px; color: var(--color-dark); }
+    h1 { text-align: center; color: var(--color-primary); margin-bottom: 20px; font-weight: 700; }
+    section { background: var(--color-light); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 30px; }
+    h2 { color: var(--color-accent); margin-top: 0; }
+    label { display: block; margin: 10px 0 5px; font-weight: 500; }
+    input, select, button { padding: 10px; margin-bottom: 15px; width: 100%; max-width: 320px; border: 2px solid var(--color-accent); border-radius: var(--radius); font-size: 1rem; }
+    input:focus, select:focus { outline: none; border-color: var(--color-primary); }
+    button { background: var(--color-primary); color: var(--color-light); border: none; cursor: pointer; transition: background 0.3s; box-shadow: var(--shadow); }
+    button:hover { background: var(--color-secondary); }
+    #export-pdf { background: var(--color-accent); }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+    th, td { padding: 12px 15px; text-align: left; }
+    thead { background: var(--color-primary); color: var(--color-light); }
+    tbody tr:nth-child(odd) { background: #f9fafb; }
+    tbody tr:hover { background: #e1e8f0; }
+    .stats { font-size: 1.1em; margin-top: 15px; }
+    #export-section { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+    #export-month { max-width: 200px; }
+    .action-btn { background: var(--color-secondary); color: var(--color-light); padding: 5px 10px; margin: 0 5px; border-radius: var(--radius); font-size: 0.9rem; }
+    .action-btn:hover { opacity: 0.8; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+  <h1>🗂️ Suivi Clients & CA Fun</h1>
+
+  <!-- Section Clients -->
+  <section id="section-clients">
+    <h2>👥 Clients</h2>
+    <form id="form-client">
+      <input type="hidden" id="edit-client-index" value="">
+      <label for="client-name">Nom du client</label>
+      <input type="text" id="client-name" placeholder="ex: Studio Alpha" required>
+      <label for="client-contact">Contact Instagram / Email</label>
+      <input type="text" id="client-contact" placeholder="@studioalpha ou mail">
+      <button type="submit" id="client-submit-btn">➕ Ajouter Client</button>
+    </form>
+    <table id="table-clients">
+      <thead>
+        <tr><th>Nom</th><th>Contact</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Section Revenus -->
+  <section id="section-revenus">
+    <h2>💰 Entrées de CA</h2>
+    <form id="form-revenue">
+      <input type="hidden" id="edit-rev-index" value="">
+      <label for="rev-client">Client</label>
+      <select id="rev-client"></select>
+      <label for="rev-amount">Montant (€)</label>
+      <input type="number" id="rev-amount" step="0.01" required>
+      <label for="rev-date">Date</label>
+      <input type="date" id="rev-date" required>
+      <button type="submit" id="rev-submit-btn">➕ Ajouter Revenu</button>
+    </form>
+    <div id="export-section">
+      <label for="export-month">📅 Mois à exporter</label>
+      <input type="month" id="export-month">
+      <button id="export-pdf">📄 Exporter PDF</button>
+    </div>
+    <table id="table-revenues">
+      <thead>
+        <tr>
+          <th>Client</th><th>Montant (€)</th><th>Provision URSSAF (€)</th><th>CA net (€)</th><th>Date</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="stats">
+      <p>Total CA : <strong><span id="total-ca">0.00</span> €</strong></p>
+      <p>Provision URSSAF (<input type="number" id="ursaff-rate" value="25" style="width:60px;"> %) : <strong><span id="ursaff-provision">0.00</span> €</strong></p>
+    </div>
+  </section>
+
+  <script>
+    const clientsKey = 'clients';
+    const revKey = 'revenues';
+    let clients = JSON.parse(localStorage.getItem(clientsKey) || '[]');
+    let revenues = JSON.parse(localStorage.getItem(revKey) || '[]');
+
+    const tbodyClients = document.querySelector('#table-clients tbody');
+    const clientSelect = document.getElementById('rev-client');
+    const tbodyRevs = document.querySelector('#table-revenues tbody');
+    const totalCAEl = document.getElementById('total-ca');
+    const provEl = document.getElementById('ursaff-provision');
+    const rateInput = document.getElementById('ursaff-rate');
+    const exportMonthInput = document.getElementById('export-month');
+    const exportBtn = document.getElementById('export-pdf');
+
+    const editClientIndexInput = document.getElementById('edit-client-index');
+    const clientNameInput = document.getElementById('client-name');
+    const clientContactInput = document.getElementById('client-contact');
+    const clientSubmitBtn = document.getElementById('client-submit-btn');
+
+    const editRevIndexInput = document.getElementById('edit-rev-index');
+    const revAmountInput = document.getElementById('rev-amount');
+    const revDateInput = document.getElementById('rev-date');
+    const revSubmitBtn = document.getElementById('rev-submit-btn');
+
+    function saveClients() { localStorage.setItem(clientsKey, JSON.stringify(clients)); }
+    function saveRevs() { localStorage.setItem(revKey, JSON.stringify(revenues)); }
+
+    function renderClients() {
+      tbodyClients.innerHTML = '';
+      clientSelect.innerHTML = '<option value="" disabled selected>Choisissez...</option>';
+      clients.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${c.name}</td>
+          <td>${c.contact}</td>
+          <td>
+            <button class="action-btn" onclick="editClient(${i})">✏️</button>
+            <button class="action-btn" onclick="deleteClient(${i})">🗑️</button>
+          </td>`;
+        tbodyClients.appendChild(tr);
+        const opt = document.createElement('option'); opt.value = i; opt.textContent = c.name;
+        clientSelect.appendChild(opt);
+      });
+    }
+
+    function renderRevs() {
+      tbodyRevs.innerHTML = '';
+      let total = 0, totalProvision = 0;
+      const rate = parseFloat(rateInput.value) || 0;
+      revenues.forEach((r, i) => {
+        const provision = r.amount * rate / 100;
+        const net = r.amount - provision;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${clients[r.clientIndex]?.name || ''}</td>
+          <td>${r.amount.toFixed(2)}</td>
+          <td>${provision.toFixed(2)}</td>
+          <td>${net.toFixed(2)}</td>
+          <td>${r.date}</td>
+          <td>
+            <button class="action-btn" onclick="editRev(${i})">✏️</button>
+            <button class="action-btn" onclick="deleteRev(${i})">🗑️</button>
+          </td>`;
+        tbodyRevs.appendChild(tr);
+        total += r.amount; totalProvision += provision;
+      });
+      totalCAEl.textContent = total.toFixed(2);
+      provEl.textContent = totalProvision.toFixed(2);
+    }
+
+    function addOrUpdateClient(e) {
+      e.preventDefault();
+      const idx = editClientIndexInput.value;
+      const name = clientNameInput.value.trim();
+      const contact = clientContactInput.value.trim();
+      if (!name) return;
+      if (idx === '') {
+        clients.push({ name, contact });
+      } else {
+        clients[idx] = { name, contact };
+        editClientIndexInput.value = '';
+        clientSubmitBtn.textContent = '➕ Ajouter Client';
+      }
+      saveClients(); renderClients(); e.target.reset();
+    }
+
+    function addOrUpdateRev(e) {
+      e.preventDefault();
+      const idx = editRevIndexInput.value;
+      const clientIndex = parseInt(clientSelect.value);
+      const amount = parseFloat(revAmountInput.value);
+      const date = revDateInput.value;
+      if (isNaN(clientIndex) || isNaN(amount) || !date) return;
+      if (idx === '') {
+        revenues.push({ clientIndex, amount, date });
+      } else {
+        revenues[idx] = { clientIndex, amount, date };
+        editRevIndexInput.value = '';
+        revSubmitBtn.textContent = '➕ Ajouter Revenu';
+      }
+      saveRevs(); renderRevs(); document.getElementById('form-revenue').reset();
+    }
+
+    function editClient(i) {
+      const c = clients[i];
+      clientNameInput.value = c.name;
+      clientContactInput.value = c.contact;
+      editClientIndexInput.value = i;
+      clientSubmitBtn.textContent = '✅ Mettre à jour';
+    }
+
+    function deleteClient(i) {
+      if (!confirm('Supprimer ce client et ses revenus associés ?')) return;
+      clients.splice(i, 1);
+      // Supprimer revenus liés
+      revenues = revenues.filter(r => r.clientIndex !== i).map(r => ({
+        clientIndex: r.clientIndex > i ? r.clientIndex - 1 : r.clientIndex,
+        amount: r.amount,
+        date: r.date
+      }));
+      saveClients(); saveRevs(); renderClients(); renderRevs();
+    }
+
+    function editRev(i) {
+      const r = revenues[i];
+      clientSelect.value = r.clientIndex;
+      revAmountInput.value = r.amount;
+      revDateInput.value = r.date;
+      editRevIndexInput.value = i;
+      revSubmitBtn.textContent = '✅ Mettre à jour';
+    }
+
+    function deleteRev(i) {
+      if (!confirm('Supprimer cette entrée de revenu ?')) return;
+      revenues.splice(i, 1);
+      saveRevs(); renderRevs();
+    }
+
+    function exportMonthlyPDF() {
+      const month = exportMonthInput.value;
+      if (!month) return alert('Veuillez sélectionner un mois');
+      const filtered = revenues.filter(r => r.date.startsWith(month));
+      if (!filtered.length) return alert('Aucune entrée pour ce mois');
+      const container = document.createElement('div'); container.style.padding = '20px';
+      container.innerHTML = `<h2>📊 CA - ${month}</h2>`;
+      const tbl = document.createElement('table'); tbl.style.width='100%'; tbl.style.borderCollapse='collapse';
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th>Client</th><th>Montant (€)</th><th>Provision (€)</th><th>CA net (€)</th><th>Date</th></tr>';
+      tbl.appendChild(thead);
+      const tb = document.createElement('tbody'); const rate = parseFloat(rateInput.value) || 0;
+      filtered.forEach(r => {
+        const prov = r.amount * rate/100;
+        const net = r.amount - prov;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${clients[r.clientIndex]?.name}</td><td>${r.amount.toFixed(2)}</td><td>${prov.toFixed(2)}</td><td>${net.toFixed(2)}</td><td>${r.date}</td>`;
+        tb.appendChild(tr);
+      });
+      tbl.appendChild(tb); container.appendChild(tbl);
+      html2pdf().set({ margin:1, filename:`CA_${month}.pdf` }).from(container).save();
+    }
+
+    document.getElementById('form-client').addEventListener('submit', addOrUpdateClient);
+    document.getElementById('form-revenue').addEventListener('submit', addOrUpdateRev);
+    rateInput.addEventListener('input', renderRevs);
+    exportBtn.addEventListener('click', exportMonthlyPDF);
+
+    // Init
+    renderClients(); renderRevs();
+  </script>
+</body>
+</html>
